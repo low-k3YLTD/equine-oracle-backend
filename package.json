@@ -1,0 +1,30 @@
+{
+  "name": "equine-oracle-engine",
+  "version": "1.0.0",
+  "description": "Full-stack web application for predicting horse race winners.",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "agent:start": "ts-node src/agents/continuousPredictionAgent.ts",
+    "collector:start": "ts-node src/agents/resultCollector.ts"
+  },
+  "keywords": [
+    "horse-racing",
+    "machine-learning",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "axios": "^1.6.8",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.30.10",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
