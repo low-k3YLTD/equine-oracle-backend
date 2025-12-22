@@ -17,14 +17,13 @@
   "license": "ISC",
   "dependencies": {
     "@types/express": "^5.0.6",
+    "@types/node": "^20.12.12",
     "axios": "^1.6.8",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.30.10",
-    "express": "^5.2.1"
-  },
-  "devDependencies": {
-    "@types/node": "^20.12.12",
+    "express": "^5.2.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
-  }
+  },
+  "devDependencies": {}
 }
