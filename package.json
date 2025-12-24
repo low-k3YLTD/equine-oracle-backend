@@ -22,9 +22,7 @@
     "drizzle-orm": "^0.30.10",
     "express": "^5.2.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
-  },
-  "devDependencies": {
+    "typescript": "^5.4.5",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.3"
