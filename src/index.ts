@@ -97,7 +97,7 @@ app.post('/api/predict', async (req: Request, res: Response) => {
 });
 
 // Public predict — move above auth
-app.post('/api/predict', async (...) => { ... });
+app.post('/api/predict', async (...) => { ... }
 
 
 // Auth-protected: Streak prediction placeholder
