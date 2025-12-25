@@ -96,8 +96,9 @@ app.post('/api/predict', async (req: Request, res: Response) => {
   }
 });
 
-// Authenticated routes prefix
-app.use('/api', authMiddleware);
+// Public predict — move above auth
+app.post('/api/predict', async (...) => { ... });
+
 
 // Auth-protected: Streak prediction placeholder
 app.post('/api/predict_streak', (req: Request, res: Response) => {
