@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { authMiddleware } from './middleware/authMiddleware';
 import { getMlPredictions } from './services/mlPredictionService';
@@ -7,17 +7,15 @@ const app = express();
 const PORT = Number(process.env.PORT) || 8080;
 
 // Middleware
-app.use(express.json({ limit: '10mb' })); // Prevent payload too large
+app.use(express.json({ limit: '10mb' })); // Prevent large payloads
 
-// CORS — Wildcard for MVP, tighten later
-app.use(
-  cors({
-    origin: true, // Reflect request origin (or set to '*' for full wildcard)
-    methods: ['GET', 'POST', 'OPTIONS'],
-    credentials: true,
-    optionsSuccessStatus: 204,
-  })
-);
+// CORS — Allow all for MVP (tighten later)
+app.use(cors({
+  origin: true, // Reflects request origin safely
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true,
+  optionsSuccessStatus: 204,
+}));
 
 // Global error handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
@@ -25,7 +23,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Health Check — Railway loves this
+// Health Check
 app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({
     status: 'healthy',
@@ -39,8 +37,7 @@ app.get('/api/model_info', (req: Request, res: Response) => {
   res.json({
     modelName: 'Equine Oracle Ensemble Predictor',
     version: '2.0-oracle-engine',
-    description:
-      'Ensemble model combining LightGBM Ranker with various classification models (LR, RF, GB, XGB) for horse race win probability prediction.',
+    description: 'Ensemble model combining LightGBM Ranker with various classification models (LR, RF, GB, XGB) for horse race win probability prediction.',
     inputFeatures: [
       'distance',
       'distance_numeric',
@@ -68,20 +65,19 @@ app.post('/api/predict', async (req: Request, res: Response) => {
   const { raceId, horseId, features } = req.body;
 
   if (!features || typeof features !== 'object' || Object.keys(features).length === 0) {
-    return res.status(400).json({ error: 'Invalid or missing features in request body.' });
+    return res.status(400).json({ error: 'Invalid or missing features.' });
   }
 
   try {
     const predictions = await getMlPredictions([features]);
 
     if (!predictions || predictions.length === 0) {
-      return res.status(500).json({ error: 'Prediction service returned no result.' });
+      return res.status(500).json({ error: 'No prediction result.' });
     }
 
     const { probability, confidence } = predictions[0];
 
-    // Future: log to monitoring DB here
-    console.log(`Prediction made | raceId: ${raceId} | horseId: ${horseId} | prob: ${probability.toFixed(4)} | conf: ${confidence.toFixed(4)}`);
+    console.log(`Prediction: race ${raceId}, horse ${horseId}, prob ${probability.toFixed(4)}, conf ${confidence.toFixed(4)}`);
 
     res.json({
       raceId,
@@ -96,23 +92,15 @@ app.post('/api/predict', async (req: Request, res: Response) => {
   }
 });
 
-// Public predict — move above auth
-app.post('/api/predict', async (...) => { ... }
+// Authenticated routes
+app.use('/api', authMiddleware);
 
-
-// Auth-protected: Streak prediction placeholder
+// Placeholder streak
 app.post('/api/predict_streak', (req: Request, res: Response) => {
   res.status(501).json({
     error: 'Not Implemented',
-    message: 'Four-race streak prediction requires dedicated multi-sequence model.',
+    message: 'Requires dedicated multi-sequence model.',
   });
-});
-
-// ... all routes above ...
-
-// Health check
-app.get('/health', (req: Request, res: Response) => {
-  res.status(200).json({ status: 'healthy', uptime: process.uptime() });
 });
 
 // 404 fallback — MUST be last
@@ -122,6 +110,7 @@ app.use((req: Request, res: Response) => {
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Equine Oracle Backend live on http://0.0.0.0:${PORT}`);
-  console.log(`❤️  Health: http://0.0.0.0:${PORT}/health`);
+  console.log(`🚀 Oracle live on http://0.0.0.0:${PORT}`);
+  console.log(`❤️ Health: http://0.0.0.0:${PORT}/health`);
+  console.log(`📊 Model: http://0.0.0.0:${PORT}/api/model_info`);
 });
