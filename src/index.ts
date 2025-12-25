@@ -51,23 +51,6 @@ app.get('/api/model_info', (req: Request, res: Response) => {
     });
 });
 
-// --- Public Endpoint ---
-app.get('/api/model_info', (req: Request, res: Response) => {
-    res.json({
-        modelName: "Equine Oracle Ensemble Predictor",
-        version: "2.0-oracle-engine",
-        description: "Ensemble model combining LightGBM Ranker with various classification models (LR, RF, GB, XGB) for horse race win probability prediction.",
-        inputFeatures: [
-            "distance", "distance_numeric", "year", "month", "day", "day_of_week",
-            "week_of_year", "days_since_last_race", "PREV_RACE_WON", "WIN_STREAK",
-            "IMPLIED_PROBABILITY", "NORMALIZED_VOLUME", "MARKET_ACTIVITY_WINDOW_HOURS"
-        ],
-        output: {
-            probability: "Win probability (0.0 to 1.0)",
-            confidence: "Model confidence (0.0 to 1.0)"
-        }
-    });
-});
 
 // POST /api/predict - Single-race prediction (Made Public for MVP)
 app.post('/api/predict', async (req: Request, res: Response) => {
