@@ -4,7 +4,7 @@ import { authMiddleware } from './middleware/authMiddleware';
 import { getMlPredictions } from './services/mlPredictionService';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;  // Railway injects PORT, fallback to 8080
 
 app.use(express.json());
 
@@ -237,7 +237,10 @@ app.post('/api/predict_streak', (req: Request, res: Response) => {
         message: 'The four-race streak prediction endpoint is a placeholder and requires a dedicated model.'
     });
 });
-
+// Add this anywhere after routes
+app.get('/health', (req: Request, res: Response) => {
+    res.status(200).json({ status: 'healthy', uptime: process.uptime() });
+});
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on http://0.0.0.0:${PORT}`);
 });
