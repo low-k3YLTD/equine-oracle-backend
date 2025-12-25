@@ -107,15 +107,20 @@ app.post('/api/predict_streak', (req: Request, res: Response) => {
   });
 });
 
-// 404 handler
-// 404 handler — safe wildcard
+// ... all routes above ...
+
+// Health check
+app.get('/health', (req: Request, res: Response) => {
+  res.status(200).json({ status: 'healthy', uptime: process.uptime() });
+});
+
+// 404 fallback — MUST be last
 app.use((req: Request, res: Response) => {
   res.status(404).json({ error: 'Endpoint not found' });
-
+});
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Equine Oracle Backend live on http://0.0.0.0:${PORT}`);
   console.log(`❤️  Health: http://0.0.0.0:${PORT}/health`);
-  console.log(`📊 Model Info: http://0.0.0.0:${PORT}/api/model_info`);
 });
