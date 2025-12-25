@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Install Python deps first (if ML needs them)
 COPY requirements.txt* ./
-RUN if [ -f requirements.txt ]; then pip3 install --no-cache-dir -r requirements.txt; fi
+RUN if [ -f requirements.txt ]; then pipx install --no-cache-dir -r requirements.txt; fi
 
 # Node deps
 COPY package*.json ./
