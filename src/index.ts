@@ -118,7 +118,14 @@ app.post('/api/predict_streak', (req: Request, res: Response) => {
   });
 });
 
-// 404 fallback — MUST be last
+// ... all routes above ...
+
+// Health check
+app.get('/health', (req: Request, res: Response) => {
+  res.status(200).json({ status: 'healthy', uptime: process.uptime() });
+});
+
+// 404 fallback
 app.use((req: Request, res: Response) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
