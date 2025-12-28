@@ -1,4 +1,5 @@
 # Procfile for Railway
 web: npm start
-worker: python ml_service.py
+agent: npm run agent:start
+collector: npm run collector:start
 
