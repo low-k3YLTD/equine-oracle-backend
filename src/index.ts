@@ -187,12 +187,21 @@ app.post('/api/predict', async (req: Request, res: Response) => {
 // Apply auth middleware ONLY to protected routes
 app.use('/api/protected', authMiddleware);
 
-// Placeholder for future authenticated endpoints
-app.post('/api/protected/predict_streak', (req: Request, res: Response) => {
-  res.status(501).json({
-    error: 'Not Implemented',
-    message: 'Requires dedicated multi-sequence model.',
-  });
+// Authenticated: Streak Prediction
+app.post('/api/protected/predict_streak', async (req: Request, res: Response) => {
+  const { horseId, currentStreak, features } = req.body;
+  
+  if (!horseId || currentStreak === undefined || !features) {
+    return res.status(400).json({ error: 'Missing required fields: horseId, currentStreak, features' });
+  }
+
+  try {
+    const { predictStreak } = await import('./services/streakService');
+    const result = await predictStreak(horseId, currentStreak, features);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Streak prediction failed', details: error.message });
+  }
 });
 
 // ==================== ERROR HANDLERS ====================
