@@ -1,0 +1,182 @@
+# Prometheus Alert Rules for Equine Oracle
+
+groups:
+  - name: equine_oracle_alerts
+    interval: 30s
+    rules:
+      # Prediction Service Alerts
+      - alert: PredictionServiceDown
+        expr: up{job="prediction-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: prediction-service
+        annotations:
+          summary: "Prediction service is down"
+          description: "Prediction service at {{ $labels.instance }} is not responding"
+
+      - alert: HighPredictionLatency
+        expr: histogram_quantile(0.95, prediction_latency_ms) > 200
+        for: 5m
+        labels:
+          severity: warning
+          component: prediction-service
+        annotations:
+          summary: "High prediction latency detected"
+          description: "P95 latency is {{ $value }}ms (threshold: 200ms)"
+
+      - alert: LowCacheHitRate
+        expr: cache_hit_rate < 50
+        for: 10m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value }}% (threshold: 50%)"
+
+      - alert: RateLimitExceeded
+        expr: rate_limit_exceeded_total > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: rate-limiter
+        annotations:
+          summary: "High rate limit violations"
+          description: "{{ $value }} rate limit violations in the last 5 minutes"
+
+      # Model Performance Alerts
+      - alert: ModelAccuracyDegraded
+        expr: model_accuracy_ndcg < 0.95
+        for: 30m
+        labels:
+          severity: warning
+          component: ml-model
+        annotations:
+          summary: "Model accuracy degraded"
+          description: "NDCG@1 accuracy is {{ $value }} (threshold: 0.95)"
+
+      - alert: ModelInferenceSlow
+        expr: model_inference_time_ms > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: ml-model
+        annotations:
+          summary: "Slow model inference"
+          description: "Average inference time is {{ $value }}ms (threshold: 100ms)"
+
+      # Database Alerts
+      - alert: DatabaseConnectionPoolExhausted
+        expr: database_connections_active / database_connections_max > 0.9
+        for: 5m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "{{ $value | humanizePercentage }} of connections in use"
+
+      - alert: DatabaseQuerySlow
+        expr: histogram_quantile(0.95, database_query_time_ms) > 500
+        for: 10m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Slow database queries"
+          description: "P95 query time is {{ $value }}ms (threshold: 500ms)"
+
+      # Redis Alerts
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis is down"
+          description: "Redis at {{ $labels.instance }} is not responding"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis memory is {{ $value | humanizePercentage }} full"
+
+      # System Alerts
+      - alert: HighCPUUsage
+        expr: node_cpu_usage_percent > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}% (threshold: 80%)"
+
+      - alert: HighMemoryUsage
+        expr: node_memory_usage_percent > 85
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}% (threshold: 85%)"
+
+      - alert: DiskSpaceLow
+        expr: node_disk_available_bytes / node_disk_total_bytes < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Low disk space"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"
+
+      # API Alerts
+      - alert: HighErrorRate
+        expr: rate(api_errors_total[5m]) / rate(api_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API error rate"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      - alert: APIEndpointDown
+        expr: up{job="prediction-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "API endpoint is down"
+          description: "API at {{ $labels.instance }} is not responding"
+
+      # Business Alerts
+      - alert: LowPredictionVolume
+        expr: rate(predictions_total[1h]) < 100
+        for: 30m
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "Low prediction volume"
+          description: "Prediction volume is {{ $value }}/hour (threshold: 100/hour)"
+
+      - alert: HighSubscriptionCancellationRate
+        expr: rate(subscription_cancellations_total[1d]) > 0.1
+        for: 1h
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "High subscription cancellation rate"
+          description: "Cancellation rate is {{ $value | humanizePercentage }}"
