@@ -1,6 +1,192 @@
-pandas==2.0.3
-numpy==1.24.3
-scikit-learn==1.3.0
-lightgbm==4.0.0
-xgboost==1.7.6
-joblib==1.3.1
+# ============================================================================
+# GOD-TIER META-ENSEMBLE HORSE RACE PREDICTION SYSTEM v2.0
+# Requirements File - Production Dependencies
+# ============================================================================
+
+# ============================================================================
+# CORE ML LIBRARIES
+# ============================================================================
+
+# Gradient Boosting Frameworks
+lightgbm>=4.0.0                # LightGBM ranker (dual old/new)
+xgboost>=2.0.0                 # XGBoost ranker with GPU support
+catboost>=1.2.0                # CatBoost ranker (YetiRank)
+
+# Neural Network Ranker
+pytorch-tabnet>=4.1.0          # TabNet attention-based ranker
+torch>=2.0.0                   # PyTorch backend for TabNet
+torchvision>=0.15.0            # PyTorch vision utilities
+
+# Traditional ML
+scikit-learn>=1.3.0            # Meta-learner (Logistic + calibration)
+scipy>=1.11.0                  # Statistical functions
+numpy>=1.24.0                  # Numerical computing
+pandas>=2.0.0                  # Data manipulation
+
+# Feature Engineering
+imbalanced-learn>=0.11.0       # SMOTE for class balancing
+
+# ============================================================================
+# MLOPS STACK
+# ============================================================================
+
+# Experiment Tracking
+mlflow>=2.8.0                  # MLflow tracking & model registry
+psycopg2-binary>=2.9.0         # PostgreSQL adapter for MLflow
+
+# Hyperparameter Optimization
+optuna>=3.4.0                  # Optuna hyperparameter tuning
+optuna-integration>=3.4.0      # MLflow integration
+
+# Model Interpretability
+shap>=0.43.0                   # SHAP explainer for interpretability
+
+# Drift Detection
+alibi-detect>=0.11.4           # Drift monitoring (feature + prediction)
+
+# ============================================================================
+# API & WEB SERVICES
+# ============================================================================
+
+# API Framework
+fastapi>=0.104.0               # Modern web framework for APIs
+uvicorn[standard]>=0.24.0      # ASGI server
+gunicorn>=21.2.0               # Production WSGI server
+pydantic>=2.5.0                # Data validation
+
+# SHAP Dashboard
+dash>=2.14.0                   # Interactive dashboard framework
+dash-bootstrap-components>=1.5.0  # Bootstrap components for Dash
+flask>=3.0.0                   # Web framework (Dash dependency)
+
+# Caching
+redis>=5.0.0                   # Redis client for caching
+hiredis>=2.2.0                 # Redis protocol parser (performance)
+
+# HTTP Clients
+requests>=2.31.0               # HTTP library
+httpx>=0.25.0                  # Async HTTP client
+aiohttp>=3.9.0                 # Async HTTP client/server
+
+# ============================================================================
+# EXTERNAL API CLIENTS
+# ============================================================================
+
+# LLM APIs (Grok-4)
+openai>=1.0.0                  # OpenAI-compatible client (xAI Grok)
+
+# Weather APIs
+python-dotenv>=1.0.0           # Environment variable management
+
+# ============================================================================
+# VISUALIZATION & REPORTING
+# ============================================================================
+
+# Plotting
+plotly>=5.17.0                 # Interactive plots for dashboard
+matplotlib>=3.8.0              # Static plots
+seaborn>=0.13.0                # Statistical visualizations
+
+# ============================================================================
+# DATA PROCESSING
+# ============================================================================
+
+# Data Formats
+pyarrow>=14.0.0                # Parquet file support
+openpyxl>=3.1.0                # Excel file support
+
+# ============================================================================
+# MONITORING & OBSERVABILITY
+# ============================================================================
+
+# Metrics
+prometheus-client>=0.18.0      # Prometheus metrics exporter
+psutil>=5.9.0                  # System monitoring
+
+# Logging
+python-json-logger>=2.0.0      # JSON logging
+
+# ============================================================================
+# MODEL OPTIMIZATION
+# ============================================================================
+
+# Quantization
+onnx>=1.15.0                   # ONNX export format
+onnxruntime>=1.16.0            # ONNX runtime
+onnxmltools>=1.12.0            # LightGBM to ONNX converter
+
+# Model Compression
+torch-optimizer>=0.3.0         # Advanced PyTorch optimizers
+
+# ============================================================================
+# DEPLOYMENT & INFRASTRUCTURE
+# ============================================================================
+
+# Containerization
+docker>=6.1.0                  # Docker Python SDK
+
+# Task Queue
+celery>=5.3.0                  # Distributed task queue
+redis>=5.0.0                   # Message broker for Celery
+
+# ============================================================================
+# DEVELOPMENT & TESTING
+# ============================================================================
+
+# Testing (optional for production)
+pytest>=7.4.0                  # Testing framework
+pytest-asyncio>=0.21.0         # Async testing
+pytest-cov>=4.1.0              # Coverage reporting
+
+# Code Quality (optional)
+black>=23.11.0                 # Code formatter
+flake8>=6.1.0                  # Linting
+mypy>=1.7.0                    # Type checking
+
+# ============================================================================
+# SECURITY
+# ============================================================================
+
+cryptography>=41.0.0           # Encryption utilities
+pyjwt>=2.8.0                   # JWT token handling
+
+# ============================================================================
+# UTILITIES
+# ============================================================================
+
+tqdm>=4.66.0                   # Progress bars
+python-dateutil>=2.8.0         # Date utilities
+pytz>=2023.3                   # Timezone support
+
+# ============================================================================
+# PLATFORM-SPECIFIC
+# ============================================================================
+
+# Linux-specific (optional)
+# python-systemd>=235            # Systemd integration
+
+# GPU Support (optional - uncomment if using GPU)
+# nvidia-ml-py3>=7.352.0         # NVIDIA GPU monitoring
+
+# ============================================================================
+# VERSION NOTES
+# ============================================================================
+# 
+# Python Version: 3.10+ (3.11 recommended)
+# CUDA Version: 12.0+ (for GPU support)
+# 
+# Installation:
+#   pip install -r requirements.txt
+# 
+# GPU Installation:
+#   pip install -r requirements.txt
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# 
+# Development Installation:
+#   pip install -r requirements.txt
+#   pip install -e .  # If using setup.py
+# 
+# Docker Installation:
+#   docker build -t godtier-ensemble:v2.0 .
+# 
+# ============================================================================
