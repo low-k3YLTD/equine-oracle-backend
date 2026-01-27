@@ -1,0 +1,422 @@
+# Stripe Subscription Integration Guide
+
+## 🚀 Complete Setup Instructions
+
+### 1. Stripe Account Setup
+
+#### Create Stripe Account
+1. Go to [stripe.com](https://stripe.com) and sign up
+2. Complete account verification
+3. Navigate to **Dashboard → Developers → API Keys**
+4. Copy your **Publishable Key** and **Secret Key**
+
+#### Create Products & Prices
+1. Go to **Products** in Stripe Dashboard
+2. Create three products:
+
+**Basic Plan**
+- Name: Basic
+- Description: 50 predictions per month
+- Price: $9.99/month
+- Recurring: Monthly
+- Copy the **Price ID** (starts with `price_`)
+
+**Pro Plan**
+- Name: Pro
+- Description: Unlimited predictions
+- Price: $29.99/month
+- Recurring: Monthly
+- Copy the **Price ID**
+
+**Premium Plan**
+- Name: Premium
+- Description: Unlimited + API access
+- Price: $99.99/month
+- Recurring: Monthly
+- Copy the **Price ID**
+
+#### Setup Webhooks
+1. Go to **Developers → Webhooks**
+2. Click **Add endpoint**
+3. Endpoint URL: `https://yourdomain.com/api/stripe/webhook`
+4. Select events to listen to:
+   - `checkout.session.completed`
+   - `customer.subscription.created`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
+   - `invoice.payment_succeeded`
+   - `invoice.payment_failed`
+5. Copy the **Webhook Signing Secret** (starts with `whsec_`)
+
+---
+
+### 2. Environment Variables
+
+Create a `.env` file in your backend:
+
+```env
+# Stripe Keys
+STRIPE_SECRET_KEY=sk_test_51...
+STRIPE_PUBLISHABLE_KEY=pk_test_51...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Stripe Price IDs
+STRIPE_PRICE_BASIC=price_1ABC...
+STRIPE_PRICE_PRO=price_1DEF...
+STRIPE_PRICE_PREMIUM=price_1GHI...
+
+# Application URLs
+FRONTEND_URL=https://horseraceapp-8ezwxkzc.manus.space
+BACKEND_URL=https://api.yourdomain.com
+
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/horseracing
+```
+
+---
+
+### 3. Database Schema
+
+#### PostgreSQL Schema
+
+```sql
+-- Add columns to existing users table
+ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(255) UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_tier VARCHAR(50) DEFAULT 'free';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) DEFAULT 'inactive';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS predictions_used INTEGER DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS predictions_limit INTEGER DEFAULT 10;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS current_period_start TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+-- Create predictions history table
+CREATE TABLE IF NOT EXISTS predictions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  race_data JSONB,
+  prediction_result JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Create index for faster queries
+CREATE INDEX idx_users_stripe_customer ON users(stripe_customer_id);
+CREATE INDEX idx_users_subscription ON users(stripe_subscription_id);
+CREATE INDEX idx_predictions_user ON predictions(user_id);
+CREATE INDEX idx_predictions_created ON predictions(created_at);
+
+-- Create subscription history table (optional, for analytics)
+CREATE TABLE IF NOT EXISTS subscription_history (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  event_type VARCHAR(100),
+  old_tier VARCHAR(50),
+  new_tier VARCHAR(50),
+  stripe_event_id VARCHAR(255),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### MongoDB Schema (Alternative)
+
+```javascript
+// User Schema
+{
+  _id: ObjectId,
+  email: String,
+  name: String,
+  stripeCustomerId: String,
+  stripeSubscriptionId: String,
+  subscription: {
+    tier: { type: String, enum: ['free', 'basic', 'pro', 'premium'], default: 'free' },
+    status: { type: String, enum: ['active', 'inactive', 'cancelled', 'past_due'], default: 'inactive' },
+    predictionsUsed: { type: Number, default: 0 },
+    predictionsLimit: { type: Number, default: 10 },
+    currentPeriodStart: Date,
+    currentPeriodEnd: Date
+  },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}
+
+// Prediction Schema
+{
+  _id: ObjectId,
+  userId: ObjectId,
+  raceData: Object,
+  predictionResult: Object,
+  createdAt: { type: Date, default: Date.now }
+}
+```
+
+---
+
+### 4. Backend Installation
+
+```bash
+# Install dependencies
+npm install stripe express dotenv
+
+# For database (choose one)
+npm install pg  # PostgreSQL
+npm install mongoose  # MongoDB
+```
+
+---
+
+### 5. Backend Implementation
+
+#### Express Server Setup
+
+```javascript
+const express = require('express');
+const cors = require('cors');
+require('dotenv').config();
+
+const app = express();
+
+// Important: Raw body for webhooks
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
+
+// JSON for other routes
+app.use(express.json());
+app.use(cors());
+
+// Import routes
+const stripeRoutes = require('./routes/stripe');
+
+// Use routes
+app.use('/api/stripe', stripeRoutes);
+
+// Start server
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+```
+
+---
+
+### 6. Frontend Integration
+
+#### Install Stripe.js
+
+```bash
+npm install @stripe/stripe-js
+```
+
+#### Update Frontend Code
+
+```javascript
+import { loadStripe } from '@stripe/stripe-js';
+
+const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+
+// In your subscribe handler
+const handleSubscribe = async (tier) => {
+  const response = await fetch('https://api.yourdomain.com/api/stripe/create-checkout-session', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${userToken}`
+    },
+    body: JSON.stringify({
+      priceId: SUBSCRIPTION_TIERS[tier].stripePriceId,
+      tier: tier
+    })
+  });
+
+  const { sessionId } = await response.json();
+  const stripe = await stripePromise;
+  
+  // Redirect to Stripe Checkout
+  const { error } = await stripe.redirectToCheckout({ sessionId });
+  
+  if (error) {
+    console.error('Stripe error:', error);
+  }
+};
+```
+
+---
+
+### 7. Testing
+
+#### Test Mode
+1. Use Stripe test mode keys (start with `sk_test_` and `pk_test_`)
+2. Use test card numbers:
+   - Success: `4242 4242 4242 4242`
+   - Decline: `4000 0000 0000 0002`
+   - 3D Secure: `4000 0025 0000 3155`
+3. Any future expiration date
+4. Any 3-digit CVC
+
+#### Test Webhooks Locally
+```bash
+# Install Stripe CLI
+stripe login
+stripe listen --forward-to localhost:3001/api/stripe/webhook
+
+# In another terminal, trigger test events
+stripe trigger checkout.session.completed
+stripe trigger invoice.payment_succeeded
+```
+
+---
+
+### 8. Security Checklist
+
+- [ ] Never expose secret keys in frontend code
+- [ ] Validate webhook signatures
+- [ ] Use HTTPS in production
+- [ ] Implement rate limiting
+- [ ] Sanitize user inputs
+- [ ] Log all subscription events
+- [ ] Implement CSRF protection
+- [ ] Use environment variables for all secrets
+- [ ] Verify user authentication before API calls
+- [ ] Implement proper error handling
+
+---
+
+### 9. Going Live
+
+1. Switch to **Live Mode** in Stripe Dashboard
+2. Replace test API keys with live keys
+3. Update webhook endpoint to production URL
+4. Enable two-factor authentication on Stripe account
+5. Set up proper monitoring and alerts
+6. Review and enable Radar (fraud prevention)
+7. Configure email receipts
+8. Test complete user flow
+9. Monitor webhook delivery
+
+---
+
+### 10. Usage Tracking Implementation
+
+#### Middleware for Prediction Endpoints
+
+```javascript
+// middleware/checkPredictionLimit.js
+async function checkPredictionLimit(req, res, next) {
+  const userId = req.user.id;
+  const user = await getUserFromDatabase(userId);
+
+  // Unlimited plans (-1)
+  if (user.predictionsLimit === -1) {
+    return next();
+  }
+
+  // Check if limit exceeded
+  if (user.predictionsUsed >= user.predictionsLimit) {
+    return res.status(403).json({
+      error: 'PREDICTION_LIMIT_REACHED',
+      message: 'You have reached your monthly prediction limit',
+      upgrade: true,
+      currentPlan: user.tier
+    });
+  }
+
+  // Attach user data to request
+  req.subscriptionData = user;
+  next();
+}
+
+// Apply to prediction route
+app.post('/api/predict', authenticate, checkPredictionLimit, async (req, res) => {
+  // Make prediction
+  const result = await makePrediction(req.body);
+  
+  // Increment count
+  await incrementPredictionCount(req.user.id);
+  
+  res.json({
+    prediction: result,
+    predictionsRemaining: req.subscriptionData.predictionsLimit - req.subscriptionData.predictionsUsed - 1
+  });
+});
+```
+
+---
+
+### 11. Cron Jobs (Monthly Reset)
+
+```javascript
+// Reset predictions monthly (if not handled by webhook)
+const cron = require('node-cron');
+
+// Run at midnight on the 1st of every month
+cron.schedule('0 0 1 * *', async () => {
+  console.log('Resetting monthly prediction counts...');
+  await resetAllPredictionCounts();
+});
+```
+
+---
+
+## 📊 Monitoring & Analytics
+
+### Key Metrics to Track
+- Monthly Recurring Revenue (MRR)
+- Churn rate
+- Conversion rate (free → paid)
+- Average predictions per user
+- Payment success/failure rates
+
+### Stripe Dashboard
+- Monitor real-time payments
+- View subscription analytics
+- Track failed payments
+- Analyze customer lifetime value
+
+---
+
+## 🆘 Common Issues & Solutions
+
+**Issue**: Webhook not receiving events
+- **Solution**: Check webhook URL is publicly accessible, verify signing secret
+
+**Issue**: "Customer not found"
+- **Solution**: Ensure customer is created before checkout session
+
+**Issue**: Duplicate subscriptions
+- **Solution**: Check if customer already has active subscription before creating new one
+
+**Issue**: Predictions not resetting
+- **Solution**: Verify webhook for `invoice.payment_succeeded` is working
+
+---
+
+## 📚 Additional Resources
+
+- [Stripe Documentation](https://stripe.com/docs)
+- [Stripe API Reference](https://stripe.com/docs/api)
+- [Subscription Best Practices](https://stripe.com/docs/billing/subscriptions/overview)
+- [Testing Guide](https://stripe.com/docs/testing)
+
+---
+
+## ✅ Launch Checklist
+
+- [ ] Stripe account verified
+- [ ] Products and prices created
+- [ ] API keys configured
+- [ ] Webhook endpoint set up
+- [ ] Database schema implemented
+- [ ] Backend routes tested
+- [ ] Frontend integration complete
+- [ ] Test transactions successful
+- [ ] Webhook events handling correctly
+- [ ] Usage limits enforced
+- [ ] Error handling implemented
+- [ ] User notifications set up
+- [ ] Security review completed
+- [ ] Production environment tested
+- [ ] Monitoring enabled
+
+---
+
+**Ready to monetize your horse racing prediction platform! 🎉**
