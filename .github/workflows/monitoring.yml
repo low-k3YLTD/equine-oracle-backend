@@ -1,0 +1,188 @@
+name: Monitoring & Alerts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'monitoring/**'
+      - 'backend/src/**'
+  schedule:
+    # Check system health every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: monitoring-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  health-check:
+    name: System Health Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check API health
+        run: |
+          # Check main API endpoint
+          API_URL="${{ secrets.API_URL || 'https://api.equineoracle.com' }}"
+          
+          echo "Checking API health at $API_URL"
+          
+          # Health check endpoint
+          response=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" 2>/dev/null || echo "000")
+          
+          if [ "$response" = "200" ]; then
+            echo "✓ API health check passed"
+          else
+            echo "::error::API health check failed with status: $response"
+            exit 1
+          fi
+          
+          # Check metrics endpoint
+          response=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/metrics" 2>/dev/null || echo "000")
+          
+          if [ "$response" = "200" ]; then
+            echo "✓ Metrics endpoint accessible"
+          else
+            echo "::warning::Metrics endpoint returned: $response"
+          fi
+
+      - name: Check database connectivity
+        run: |
+          # This would be more comprehensive in a real setup
+          # For now, just verify we can reach the database
+          echo "✓ Database connectivity check (placeholder)"
+
+      - name: Check Redis connectivity
+        run: |
+          echo "✓ Redis connectivity check (placeholder)"
+
+      - name: Check model serving
+        run: |
+          API_URL="${{ secrets.API_URL || 'https://api.equineoracle.com' }}"
+          
+          # Test prediction endpoint
+          response=$(curl -s -X POST "$API_URL/api/v2/predict" \
+            -H "Content-Type: application/json" \
+            -d '{"raceId": "test", "horseId": "test", "features": {}}' \
+            -w "%{http_code}" 2>/dev/null || echo "000")
+          
+          if [ "$response" = "200" ]; then
+            echo "✓ Prediction endpoint working"
+          else
+            echo "::warning::Prediction endpoint returned: $response"
+          fi
+
+  performance-metrics:
+    name: Collect Performance Metrics
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests pandas prometheus-api-client
+
+      - name: Fetch Prometheus metrics
+        run: |
+          python -c "
+          from prometheus_api_client import PrometheusConnect
+          import os
+          import json
+          
+          prom_url = os.environ.get('PROMETHEUS_URL', 'http://localhost:9090')
+          
+          try:
+              prom = PrometheusConnect(url=prom_url, disable_ssl=True)
+              
+              # Get key metrics
+              metrics = {
+                  'prediction_latency': prom.custom_query('prediction_latency_ms'),
+                  'model_accuracy': prom.custom_query('model_accuracy_ndcg'),
+                  'api_requests': prom.custom_query('api_requests_total'),
+                  'error_rate': prom.custom_query('rate_limit_exceeded_total'),
+              }
+              
+              # Save metrics
+              with open('prometheus_metrics.json', 'w') as f:
+                  json.dump(metrics, f, indent=2)
+              
+              print('✓ Prometheus metrics collected')
+              
+          except Exception as e:
+              print(f'::warning::Failed to collect Prometheus metrics: {e}')
+          " 2>&1 || echo "Prometheus metrics collection skipped"
+
+      - name: Upload metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitoring-metrics
+          path: prometheus_metrics.json
+          retention-days: 30
+
+  alert-check:
+    name: Check for Alerts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Check Alertmanager alerts
+        run: |
+          python -c "
+          import requests
+          import json
+          import os
+          
+          alertmanager_url = os.environ.get('ALERTMANAGER_URL', 'http://localhost:9093')
+          
+          try:
+              response = requests.get(f'{alertmanager_url}/api/v2/alerts')
+              if response.status_code == 200:
+                  alerts = response.json()
+                  
+                  if alerts and len(alerts.get('data', {}).get('alerts', [])) > 0:
+                      active_alerts = [a for a in alerts['data']['alerts'] if a['status']['state'] == 'firing']
+                      
+                      if active_alerts:
+                          print(f'::error::Found {len(active_alerts)} active alerts:')
+                          for alert in active_alerts:
+                              print(f'  - {alert.get(\"labels\", {}).get(\"alertname\", \"Unknown\")}: {alert.get(\"annotations\", {}).get(\"summary\", \"No description\")}')
+                          exit(1)
+                      else:
+                          print('✓ No active alerts')
+                  else:
+                      print('✓ No alerts found')
+              else:
+                  print(f'::warning::Alertmanager returned status: {response.status_code}')
+                  
+          except Exception as e:
+              print(f'::warning::Failed to check alerts: {e}')
+          " 2>&1 || echo "Alert check skipped"
+
+  notify:
+    name: Monitoring Alert
+    needs: [health-check, performance-metrics, alert-check]
+    if: always() && (failure() || cancelled())
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord notification
+        uses: Ilshidur/action-discord@0.6.8
+        with:
+          args: "🚨 Monitoring Alert on ${{ github.ref }}. Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}

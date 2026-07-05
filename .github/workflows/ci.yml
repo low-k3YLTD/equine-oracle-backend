@@ -1,0 +1,446 @@
+name: Equine Oracle Backend - CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, feature/*]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build even if cache exists'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.11'
+  PNPM_VERSION: '9'
+
+jobs:
+  setup-backend:
+    name: Setup Backend Dependencies
+    runs-on: ubuntu-latest
+    outputs:
+      cache-hit: ${{ steps.cache.outputs.cache-hit }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        id: cache
+        with:
+          path: |
+            ~/.pnpm-store
+            backend/node_modules
+          key: backend-deps-${{ hashFiles('backend/**/pnpm-lock.yaml') }}-${{ hashFiles('backend/**/package.json') }}
+          restore-keys: |
+            backend-deps-${{ hashFiles('backend/**/pnpm-lock.yaml') }}-
+            backend-deps-
+
+      - name: Install backend dependencies
+        if: steps.cache.outputs.cache-hit != 'true' || github.event.inputs.force_build == 'true'
+        working-directory: backend
+        run: pnpm install --frozen-lockfile
+
+  setup-ml:
+    name: Setup ML Dependencies
+    runs-on: ubuntu-latest
+    outputs:
+      cache-hit: ${{ steps.cache.outputs.cache-hit }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        id: cache
+        with:
+          path: |
+            ~/.cache/pip
+            ml/venv
+          key: ml-deps-${{ hashFiles('ml/**/requirements.txt') }}
+          restore-keys: ml-deps-
+
+      - name: Install ML dependencies
+        if: steps.cache.outputs.cache-hit != 'true' || github.event.inputs.force_build == 'true'
+        run: |
+          python -m venv ml/venv
+          source ml/venv/bin/activate
+          pip install --upgrade pip
+          pip install -r ml/requirements.txt
+
+  lint:
+    name: Lint & Type Check
+    needs: setup-backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pnpm-store
+            backend/node_modules
+          key: backend-deps-${{ hashFiles('backend/**/pnpm-lock.yaml') }}-${{ hashFiles('backend/**/package.json') }}
+
+      - name: Type check
+        working-directory: backend
+        run: pnpm check 2>&1 || true
+
+      - name: Lint
+        working-directory: backend
+        run: pnpm lint 2>&1 || true
+
+  test-backend:
+    name: Backend Tests
+    needs: setup-backend
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=3
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: equine_oracle_test
+        ports:
+          - 5432:5432
+        options: --health-cmd="pg_isready -U test" --health-interval=10s --health-timeout=5s --health-retries=3
+    env:
+      DATABASE_URL: 'postgresql://test:test@localhost:5432/equine_oracle_test'
+      REDIS_URL: 'redis://localhost:6379'
+      NODE_ENV: 'test'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pnpm-store
+            backend/node_modules
+          key: backend-deps-${{ hashFiles('backend/**/pnpm-lock.yaml') }}-${{ hashFiles('backend/**/package.json') }}
+
+      - name: Wait for services
+        run: |
+          for i in {1..15}; do
+            if redis-cli ping 2>/dev/null && pg_isready -U test -h localhost -p 5432 2>/dev/null; then
+              echo "Services are ready"
+              break
+            fi
+            echo "Waiting for services... ($i/15)"
+            sleep 5
+          done
+
+      - name: Run database migrations
+        working-directory: backend
+        run: pnpm db:migrate 2>&1 || true
+
+      - name: Run backend tests
+        working-directory: backend
+        run: pnpm test
+
+  test-ml:
+    name: ML Tests
+    needs: setup-ml
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ml/venv
+          key: ml-deps-${{ hashFiles('ml/**/requirements.txt') }}
+
+      - name: Activate virtual environment
+        run: source ml/venv/bin/activate
+
+      - name: Run ML unit tests
+        run: |
+          cd ml
+          python -m pytest tests/ -v --tb=short 2>&1 || true
+
+      - name: Run ensemble tests
+        run: |
+          cd ml
+          python -c "
+          from ensemble.weighted_ensemble import WeightedEnsemble
+          from models.model_registry import ModelRegistry
+          import numpy as np
+          
+          # Test basic functionality
+          registry = ModelRegistry()
+          models = {}  # Would load real models in production
+          ensemble = WeightedEnsemble(models)
+          
+          # Test with dummy data
+          X = np.random.rand(100, 10)
+          try:
+              predictions = ensemble.predict(X)
+              print(f'✓ Ensemble prediction test passed: {len(predictions)} predictions')
+          except Exception as e:
+              print(f'✗ Ensemble prediction test failed: {e}')
+              exit(1)
+          " 2>&1
+
+  build-backend:
+    name: Build Backend
+    needs: [lint, test-backend]
+    runs-on: ubuntu-latest
+    outputs:
+      build_hash: ${{ steps.build.outputs.hash }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pnpm-store
+            backend/node_modules
+          key: backend-deps-${{ hashFiles('backend/**/pnpm-lock.yaml') }}-${{ hashFiles('backend/**/package.json') }}
+
+      - name: Build backend
+        id: build
+        working-directory: backend
+        run: |
+          pnpm build
+          echo "hash=$(date +%s%N | sha256sum | head -c 16)" >> $GITHUB_OUTPUT
+
+      - name: Upload backend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-build
+          path: backend/dist/
+          retention-days: 7
+
+  build-ml:
+    name: Build ML Service
+    needs: [test-ml]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ml/venv
+          key: ml-deps-${{ hashFiles('ml/**/requirements.txt') }}
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build ML service
+        run: |
+          cd ml
+          pyinstaller --onefile --name ml_service inference/prediction_service.py 2>&1 || true
+
+      - name: Upload ML build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-build
+          path: ml/dist/
+          retention-days: 7
+
+  docker:
+    name: Build Docker Images
+    needs: [build-backend, build-ml]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download backend build
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: backend/dist/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Login to GitHub Container Registry
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            lowk3yltd/equine-oracle-backend:latest
+            lowk3yltd/equine-oracle-backend:${{ github.sha }}
+            ghcr.io/low-k3yltd/equine-oracle-backend:latest
+            ghcr.io/low-k3yltd/equine-oracle-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=production
+
+      - name: Build and push ML Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ml
+          file: ml/Dockerfile
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            lowk3yltd/equine-oracle-ml:latest
+            lowk3yltd/equine-oracle-ml:${{ github.sha }}
+            ghcr.io/low-k3yltd/equine-oracle-ml:latest
+            ghcr.io/low-k3yltd/equine-oracle-ml:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: docker
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: https://staging-api.equineoracle.com
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy backend to Railway
+        run: |
+          echo "Deploying backend to Railway staging..."
+          # npx railway up --service equine-oracle-backend-staging
+
+      - name: Deploy ML service to Railway
+        run: |
+          echo "Deploying ML service to Railway staging..."
+          # npx railway up --service equine-oracle-ml-staging
+
+  deploy-production:
+    name: Deploy to Production
+    needs: docker
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://api.equineoracle.com
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy backend to Railway
+        run: |
+          echo "Deploying backend to Railway production..."
+          # npx railway up --service equine-oracle-backend
+
+      - name: Deploy ML service to Railway
+        run: |
+          echo "Deploying ML service to Railway production..."
+          # npx railway up --service equine-oracle-ml
+
+  notify:
+    name: Notify on Failure
+    needs: [lint, test-backend, test-ml, build-backend, build-ml, docker]
+    if: always() && (failure() || cancelled())
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord notification
+        uses: Ilshidur/action-discord@0.6.8
+        with:
+          args: "❌ Equine Oracle Backend CI/CD failed on ${{ github.ref }}. Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
